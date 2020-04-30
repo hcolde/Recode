@@ -12,7 +12,7 @@
 
 ## 功能
 
-支持从GBK（向下兼容GB2312）、UCS-2 Big Endian、UCS-2 Little Endian及UTF8-BOM编码转换为UTF8编码。
+支持从GBK（向下兼容GB2312）、UCS-2 Big Endian、UCS-2 Little Endian、ISO8859_1及UTF8-BOM编码转换为UTF8编码。
 
 ## 使用到的技术
 

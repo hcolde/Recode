@@ -7,6 +7,7 @@ import (
 	"github.com/axgle/mahonia"
 	zmq "github.com/pebbe/zmq4"
 	"golang.org/x/text/encoding"
+	"golang.org/x/text/encoding/charmap"
 	"golang.org/x/text/encoding/unicode"
 	"io"
 	"io/ioutil"
@@ -251,6 +252,8 @@ func modifyCoding(source, output string, ch chan Result, decoderLE, decoderBE *e
 }
 
 func getUtf8(num int, bs []byte, decoderLE, decoderBE *encoding.Decoder) ([]byte, int) {
+	isgbk := false
+	isiso8859_1 := false
 	switch num {
 	case 1:
 		bs, _ = decoderLE.Bytes(bs)
@@ -261,13 +264,26 @@ func getUtf8(num int, bs []byte, decoderLE, decoderBE *encoding.Decoder) ([]byte
 	case 3:
 		return bs, 1
 	default:
-		if !isGBK(bs) || isUTF8(bs) {
+		if isGBK(bs) {
+			isgbk = true
+		} else if isUTF8(bs) {
 			return bs, 1
+		} else {
+			isiso8859_1 = true
 		}
 	}
 
-	decoder := mahonia.NewDecoder("gbk")
-	_, bs, _ = decoder.Translate(bs, true)
+	if isgbk {
+		decoder := mahonia.NewDecoder("gbk")
+		_, bs, _ = decoder.Translate(bs, true)
+		return bs, 2
+	} else if isiso8859_1 {
+        latin1, err := charmap.ISO8859_1.NewDecoder().Bytes(bs)
+        if err != nil {
+            return bs, 1
+        }
+        return latin1, 2
+    }
 	return bs, 2
 }
 
