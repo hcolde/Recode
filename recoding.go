@@ -178,9 +178,9 @@ func getFilePath(fileDir, source, output string, ret []string, data chan Data) [
 
 /*
 * code:
-*   1: no need
-*   2: success
-*   3: failed
+*	1: no need
+*	2: success
+*	3: failed
 */
 func modifyCoding(source, output string, ch chan Result, decoderLE, decoderBE *encoding.Decoder) {
 	f, err := os.Open(source)
@@ -278,12 +278,12 @@ func getUtf8(num int, bs []byte, decoderLE, decoderBE *encoding.Decoder) ([]byte
 		_, bs, _ = decoder.Translate(bs, true)
 		return bs, 2
 	} else if isiso8859_1 {
-        latin1, err := charmap.ISO8859_1.NewDecoder().Bytes(bs)
-        if err != nil {
-            return bs, 1
-        }
-        return latin1, 2
-    }
+		latin1, err := charmap.ISO8859_1.NewDecoder().Bytes(bs)
+		if err != nil {
+			return bs, 1
+		}
+		return latin1, 2
+	}
 	return bs, 2
 }
 
