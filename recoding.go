@@ -1,73 +1,107 @@
 package main
 
+import "C"
 import (
 	"bufio"
-	"flag"
+	"encoding/json"
 	"github.com/axgle/mahonia"
+	zmq "github.com/pebbe/zmq4"
+	"golang.org/x/text/encoding"
 	"golang.org/x/text/encoding/unicode"
 	"io"
 	"io/ioutil"
-	"log"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
-
-var decoderLE = unicode.UTF16(unicode.LittleEndian, unicode.UseBOM).NewDecoder()
-var decoderBE = unicode.UTF16(unicode.BigEndian, unicode.UseBOM).NewDecoder()
 
 type Result struct {
 	fpath string
 	code int
-	err error
+	err string
+}
+
+type Data struct {
+	Rate string `json:"rate"`
+	Msg string `json:"msg"`
 }
 
 func main() {
-	var (
-		source string
-		output string
-	)
-	flag.StringVar(&source, "source", "", "set source path")
-	flag.StringVar(&output, "output", "", "set output path")
-	flag.Parse()
-
-	Run(source, output)
-
 }
 
-func Run(source, output string) {
-	_ = os.Remove("./recoding.log")
-	log.SetPrefix("[recoding]")
-	log.SetFlags(log.Ldate|log.Ltime|log.Lshortfile)
-	logFile, err := os.OpenFile("./recoding.log", os.O_RDWR|os.O_CREATE, 0666)
-	if err != nil {
-		log.Println(err.Error())
-		return
-	}
-	defer logFile.Close()
-	log.SetOutput(logFile)
+func setResult(fpath string, code int, err string) (result Result) {
+	result.code = code
+	result.fpath = fpath
+	result.err = err
+	return
+}
 
+func server(data chan Data, stop chan bool) {
+	responder, _ := zmq.NewSocket(zmq.REP)
+	defer responder.Close()
+	_ = responder.Bind("tcp://127.0.0.1:12138")
+	bk := 0
+
+	for {
+		identity, err := responder.Recv(0)
+		if bk == 1 {
+			break
+		} else if err != nil {
+			continue
+		}
+
+		if identity != "recoding" {
+			continue
+		}
+
+		d := <-data
+		js, err := json.Marshal(d)
+		if err != nil {
+			_, _ = responder.Send("", 0)
+			continue
+		}
+
+		_, _ = responder.SendBytes(js, 0)
+		rate, _ := strconv.Atoi(d.Rate)
+		if rate >= 100 || rate == -1 {
+			bk = 1
+		}
+	}
+	stop <- true
+}
+
+//export Recode
+func Recode(source, desktop string) {
+	stop := make(chan bool, 1)
+	data := make(chan Data, 10)
+	go server(data, stop)
+	defer func() {
+		<- stop
+	}()
+
+	output := filepath.Join(desktop, "output")
 	if source == "" || output == "" {
-		log.Println("Please set source and output param")
+		data <- Data{"-1", "Please set source and output param"}
 		return
 	}
 
 	dir, _ := filepath.Split(source)
 
 	if dir == output || dir == strings.Join([]string{output, "/"}, "") || dir == strings.Join([]string{output, "\\"}, "") {
-		log.Println("output path could not in source path")
+		data <- Data{"-1", "output path could not in source path"}
 		return
 	}
 
 	if _, err := os.Stat(output); err == nil {
 		if err := os.RemoveAll(output); err != nil {
-			log.Println(err.Error())
+			data <- Data{"-1", err.Error()}
 			return
 		}
 	}
 
 	if err := os.MkdirAll(output, os.ModePerm); err != nil {
-		log.Println(err.Error())
+		data <- Data{"-1", err.Error()}
 		return
 	}
 
@@ -75,25 +109,35 @@ func Run(source, output string) {
 	if isFile(source) {
 		files = []string{source}
 	} else {
-		files = getFilePath(source, source, output, files)
+		files = getFilePath(source, source, output, files, data)
+	}
+	if files == nil {
+		return
 	}
 	length := len(files)
 
 	ch := make(chan Result)
+	decoderLE := unicode.UTF16(unicode.LittleEndian, unicode.UseBOM).NewDecoder()
+	decoderBE := unicode.UTF16(unicode.BigEndian, unicode.UseBOM).NewDecoder()
 	for _, f := range files {
-		o := filepath.Join(output, strings.Replace(f, source, "", -1))
-		go modifyCoding(f, o, ch)
+		o := strings.Replace(f, source, output, -1)
+		if source == f {
+			_, t :=filepath.Split(f)
+			o = filepath.Join(output, t)
+		}
+		go modifyCoding(f, o, ch, decoderLE, decoderBE)
 	}
 
 	for i := 0; i < length; i++ {
 		r := <-ch
-		msg := "不用转换"
+		msg := "no need"
 		if r.code == 2 {
-			msg = "转换成功"
+			msg = "succeeded"
 		} else if r.code == 3 {
-			msg = strings.Join([]string{"转换失败.err:", r.err.Error()}, "")
+			msg = strings.Join([]string{"failed.err:", r.err}, "")
 		}
-		log.Println(r.fpath, msg)
+		msg = strings.Join([]string{"[", r.fpath, "]:", msg}, "")
+		data <- Data{strconv.Itoa((i + 1) / length * 100), msg}
 	}
 }
 
@@ -106,9 +150,10 @@ func isFile(str string) bool {
 	return !file.IsDir()
 }
 
-func getFilePath(fileDir, source, output string, ret []string) []string {
+func getFilePath(fileDir, source, output string, ret []string, data chan Data) []string {
 	dir, err := ioutil.ReadDir(fileDir)
 	if err != nil {
+		data <- Data{"-1", err.Error()}
 		return nil
 	}
 
@@ -119,10 +164,10 @@ func getFilePath(fileDir, source, output string, ret []string) []string {
 			o := filepath.Join(output, strings.Replace(filepath.Join(fileDir, fi.Name()), source, "", -1))
 			err = os.MkdirAll(o, os.ModePerm)
 			if err != nil {
-				log.Println(err.Error())
-				continue
+				data <- Data{"-1", err.Error()}
+				return nil
 			}
-			ret = getFilePath(filepath.Join(fileDir, fi.Name()), source, output, ret)
+			ret = getFilePath(filepath.Join(fileDir, fi.Name()), source, output, ret, data)
 		} else {
 			ret = append(ret, filepath.Join(fileDir, fi.Name()))
 		}
@@ -130,14 +175,17 @@ func getFilePath(fileDir, source, output string, ret []string) []string {
 	return ret
 }
 
-func modifyCoding(source, output string, ch chan Result) {
-	r := Result{output, 1, nil}
+/*
+* code:
+*   1: no need
+*   2: success
+*   3: failed
+*/
+func modifyCoding(source, output string, ch chan Result, decoderLE, decoderBE *encoding.Decoder) {
 	f, err := os.Open(source)
 
 	if err != nil {
-		r.code = 3
-		r.err = err
-		ch <- r
+		ch <- setResult(output, 3, err.Error())
 		return
 	}
 
@@ -146,9 +194,7 @@ func modifyCoding(source, output string, ch chan Result) {
 	buffer := make([]byte, 3)
 	if _, err := f.Read(buffer); err != nil {
 		if err != io.EOF {
-			r.code = 3
-			r.err = err
-			ch <- r
+			ch <- setResult(output, 3, err.Error())
 			return
 		}
 	}
@@ -166,9 +212,7 @@ func modifyCoding(source, output string, ch chan Result) {
 
 	f2, err := os.OpenFile(output, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0666)
 	if err != nil {
-		r.code = 3
-		r.err = err
-		ch <- r
+		ch <- setResult(output, 3, err.Error())
 		return
 	}
 	defer f2.Close()
@@ -190,7 +234,7 @@ func modifyCoding(source, output string, ch chan Result) {
 			}
 		}
 
-		buffer, code2 := getUtf8(ns, b)
+		buffer, code2 := getUtf8(ns, b, decoderLE, decoderBE)
 		if code2 > code {
 			code = code2
 		}
@@ -203,11 +247,10 @@ func modifyCoding(source, output string, ch chan Result) {
 	if ns == 3 {
 		code = 2
 	}
-	r.code = code
-	ch <- r
+	ch <- setResult(output, code, "")
 }
 
-func getUtf8(num int, bs []byte) ([]byte, int) {
+func getUtf8(num int, bs []byte, decoderLE, decoderBE *encoding.Decoder) ([]byte, int) {
 	switch num {
 	case 1:
 		bs, _ = decoderLE.Bytes(bs)
