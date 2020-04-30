@@ -19,13 +19,13 @@ import (
 
 type Result struct {
 	fpath string
-	code int
-	err string
+	code  int
+	err   string
 }
 
 type Data struct {
 	Rate string `json:"rate"`
-	Msg string `json:"msg"`
+	Msg  string `json:"msg"`
 }
 
 func main() {
@@ -78,7 +78,7 @@ func Recode(source, desktop string) {
 	data := make(chan Data, 10)
 	go server(data, stop)
 	defer func() {
-		<- stop
+		<-stop
 	}()
 
 	output := filepath.Join(desktop, "output")
@@ -123,7 +123,7 @@ func Recode(source, desktop string) {
 	for _, f := range files {
 		o := strings.Replace(f, source, output, -1)
 		if source == f {
-			_, t :=filepath.Split(f)
+			_, t := filepath.Split(f)
 			o = filepath.Join(output, t)
 		}
 		go modifyCoding(f, o, ch, decoderLE, decoderBE)
@@ -181,7 +181,7 @@ func getFilePath(fileDir, source, output string, ret []string, data chan Data) [
 *	1: no need
 *	2: success
 *	3: failed
-*/
+ */
 func modifyCoding(source, output string, ch chan Result, decoderLE, decoderBE *encoding.Decoder) {
 	f, err := os.Open(source)
 
@@ -200,14 +200,13 @@ func modifyCoding(source, output string, ch chan Result, decoderLE, decoderBE *e
 		}
 	}
 
-
 	ns := 0
 
 	if buffer[0] == 255 {
 		ns = 1
-	}else if buffer[0] == 254 {
+	} else if buffer[0] == 254 {
 		ns = 2
-	}else if buffer[0] == 239 && buffer[1] == 187 && buffer[2] == 191 {
+	} else if buffer[0] == 239 && buffer[1] == 187 && buffer[2] == 191 {
 		ns = 3
 	}
 
@@ -294,8 +293,8 @@ func isGBK(data []byte) bool {
 	for i < length {
 		if data[i] < 0x80 { // ascii
 			i++
-		} else if i + 1 < length { // 使用双字节
-			if (data[i] < 0x81 || data[i] > 0xFE) && (data[i + 1] < 0x40 || data[i + 1] > 0xFE) {
+		} else if i+1 < length { // 使用双字节
+			if (data[i] < 0x81 || data[i] > 0xFE) && (data[i+1] < 0x40 || data[i+1] > 0xFE) {
 				return false
 			}
 			i += 2
@@ -319,13 +318,13 @@ func isUTF8(data []byte) bool {
 				continue
 			}
 			temp := i
-			for temp >> 7 > 0 { // 判断比特位最高位是否为1
+			for temp>>7 > 0 { // 判断比特位最高位是否为1
 				temp = temp << 1 & 0xf0
 				count++
 			}
 			count-- // 要算上自身这一位
 			continue
-		} else if i >> 6 != 2 {
+		} else if i>>6 != 2 {
 			return false
 		}
 		count--
