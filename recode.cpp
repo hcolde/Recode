@@ -78,11 +78,12 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 
 void createEdit(HWND hwnd, LPARAM lParam)
 {
+    // 选择的文件路径
     CreateWindow(
         TEXT("edit"),
         NULL,
-        WS_CHILD | WS_VISIBLE | ES_CENTER | WS_DISABLED,
-        WIDTH / 2 - WIDTH / 4 ,
+        WS_CHILD | WS_VISIBLE | ES_CENTER | ES_READONLY,
+        WIDTH / 2 - WIDTH / 4,
         HEIGHT / 6,
         WIDTH / 2,
         CY * 2,
@@ -91,15 +92,29 @@ void createEdit(HWND hwnd, LPARAM lParam)
         NULL
     );
 
-    
+    // 日志栏
+    CreateWindow(
+        TEXT("edit"),
+        NULL,
+        WS_CHILD | WS_VISIBLE | ES_MULTILINE | ES_AUTOVSCROLL | ES_WANTRETURN | WS_VSCROLL | ES_READONLY,
+        0,
+        BTNHEIGHT + CY + BTNYINTERVAL,
+        WIDTH - 20,
+        HEIGHT - BTNHEIGHT - CY - BTNYINTERVAL,
+        hwnd,
+        (HMENU)IDC_EDIT_LOG,
+        ((LPCREATESTRUCT)lParam)->hInstance,
+        NULL
+    );
 }
 
 void createButton(HWND hwnd, LPARAM lParam)
 {
+    // 下一个版本:拖动文件区域(可将文件或文件夹拖动到该区域内)
     CreateWindow(
         TEXT("button"),
-        TEXT("可将文件或文件夹拖动到该区域内"),
-        BS_GROUPBOX | WS_CHILD | WS_VISIBLE,
+        TEXT("工作区"),
+        BS_GROUPBOX | WS_CHILD | WS_VISIBLE | WS_EX_ACCEPTFILES,
         0,
         0,
         WIDTH,
@@ -110,7 +125,8 @@ void createButton(HWND hwnd, LPARAM lParam)
         NULL
     );
 
-    for ( int i = 0; i < BTNNUM; i++)
+    // 四个按钮 选择文件 选择文件夹 运行 打开目录
+    for (int i = 0; i < BTNNUM; i++)
     {
         CreateWindow(
             TEXT("button"),
@@ -126,22 +142,22 @@ void createButton(HWND hwnd, LPARAM lParam)
             NULL
         );
     }
-    EnableWindow(GetDlgItem(hwnd, 3), FALSE);
-    EnableWindow(GetDlgItem(hwnd, 4), FALSE);
+    EnableWindow(GetDlgItem(hwnd, IDC_BUTTON_RECODE), FALSE);
+    // EnableWindow(GetDlgItem(hwnd, IDC_BUTTON_REVIEW), FALSE);
 }
 
 void buttonFunc(HWND hwnd, WPARAM wParam)
 {
     switch (wParam)
     {
-    case 1:
+    case IDC_BUTTON_SELECT_FILE:
         selectFile(hwnd);
         break;
-    case 2:
+    case IDC_BUTTON_SELECT_DOCUMENT:
         selectDocument(hwnd);
         break;
-    case 3:
-        run(hwnd);
+    case IDC_BUTTON_RECODE:
+        recoding(hwnd);
         break;
     }
 }
@@ -162,11 +178,14 @@ void selectFile(HWND hwnd)
 
     if (GetOpenFileName(&ofn))
     {
-        EnableWindow(GetDlgItem(hwnd, 3), TRUE);
+        SetWindowText(GetDlgItem(hwnd, IDC_BUTTON_RECODE), TEXT_NAME_RECODE); // 还原运行按钮
+        SetWindowText(GetDlgItem(hwnd, IDC_EDIT_LOG), NULL); // 清空日志栏
+        //EnableWindow(GetDlgItem(hwnd, IDC_BUTTON_REVIEW), FALSE); // 禁止点击查看目录
+        EnableWindow(GetDlgItem(hwnd, IDC_BUTTON_RECODE), TRUE); // 选择后允许点击运行
     }
     else
     {
-        EnableWindow(GetDlgItem(hwnd, 3), FALSE);
+        EnableWindow(GetDlgItem(hwnd, IDC_BUTTON_RECODE), FALSE);
         memset(filePath, 0, sizeof(filePath));
     }
     SetWindowText(GetDlgItem(hwnd, IDC_EDIT_PATH), filePath);
@@ -174,7 +193,7 @@ void selectFile(HWND hwnd)
 
 void selectDocument(HWND hwnd)
 {
-    BROWSEINFO bi = {0};
+    BROWSEINFO bi = { 0 };
     bi.hwndOwner = NULL;
     bi.lpszTitle = TEXT("选择一个文件夹");
     bi.ulFlags = BIF_RETURNONLYFSDIRS | BIF_NONEWFOLDERBUTTON;
@@ -184,26 +203,135 @@ void selectDocument(HWND hwnd)
 
     if (SHGetPathFromIDList(lpList, filePath))
     {
-        EnableWindow(GetDlgItem(hwnd, 3), TRUE);
+        SetWindowText(GetDlgItem(hwnd, IDC_BUTTON_RECODE), TEXT_NAME_RECODE); // 还原运行按钮
+        SetWindowText(GetDlgItem(hwnd, IDC_EDIT_LOG), NULL); // 清空日志栏
+        //EnableWindow(GetDlgItem(hwnd, IDC_BUTTON_REVIEW), FALSE); // 禁止点击查看目录
+        EnableWindow(GetDlgItem(hwnd, IDC_BUTTON_RECODE), TRUE); // 选择后允许点击运行
     }
     else
     {
-        EnableWindow(GetDlgItem(hwnd, 3), FALSE);
+        EnableWindow(GetDlgItem(hwnd, IDC_BUTTON_RECODE), FALSE);
         memset(filePath, 0, sizeof(filePath));
     }
     SetWindowText(GetDlgItem(hwnd, IDC_EDIT_PATH), filePath);
 }
 
-void run(HWND hwnd)
+void recoding(HWND hwnd)
 {
-    /*EnableWindow(GetDlgItem(hwnd, 3), FALSE);
-    if (_access("recoding.exe", 0) == -1) // recoding.exe不存在
+    SetWindowText(GetDlgItem(hwnd, IDC_EDIT_LOG), NULL); // 清空日志栏
+    HMODULE  dll = LoadLibrary(TEXT("recoding.dll"));
+    if (NULL == dll)
     {
+        SetWindowText(GetDlgItem(hwnd, IDC_EDIT_LOG), TEXT("无法加载recoding.dll\r\n"));
         return;
-    }*/
-    
+    }
+    RecodeFunc recode = (RecodeFunc)GetProcAddress(dll, "Recode");
+    if (recode)
+    {
+        // 按钮全部禁止点击
+        EnableWindow(GetDlgItem(hwnd, IDC_BUTTON_SELECT_FILE), FALSE);
+        EnableWindow(GetDlgItem(hwnd, IDC_BUTTON_SELECT_DOCUMENT), FALSE);
+        EnableWindow(GetDlgItem(hwnd, IDC_BUTTON_RECODE), FALSE);
+        //EnableWindow(GetDlgItem(hwnd, IDC_BUTTON_REVIEW), FALSE);
+
+        CreateThread(NULL, NULL, Recode, (LPVOID)recode, NULL, NULL);
+        CreateThread(NULL, NULL, Sock, (LPVOID)hwnd, NULL, NULL);
+    }
+    else
+    {
+        SetWindowText(GetDlgItem(hwnd, IDC_EDIT_LOG), TEXT("无法调用函数\r\n"));
+    }
+    //FreeLibrary(dll);
+}
+
+void tchar2char(TCHAR* tc, char* c)
+{
+    int len = WideCharToMultiByte(CP_ACP, 0, tc, -1, NULL, 0, NULL, NULL);
+    WideCharToMultiByte(CP_ACP, 0, tc, -1, c, len, NULL, NULL);
+}
+
+void char2tchar(TCHAR* tc, char* c)
+{
+    int len = MultiByteToWideChar(CP_ACP, 0, c, strlen(c) + 1, NULL, 0);
+    MultiByteToWideChar(CP_ACP, 0, c, strlen(c) + 1, tc, len);
+}
+
+DWORD WINAPI Recode(LPVOID param)
+{
+    RecodeFunc recode = (RecodeFunc)param;
+    char s[256] = { 0 };
+    char o[256] = { 0 };
+    tchar2char(filePath, s);
+
     // 获取桌面路径
-    TCHAR desktop[256];
+    TCHAR desktop[256] = { 0 };
+    LPMALLOC mc = NULL;
+    LPITEMIDLIST pid = NULL;
+    SHGetMalloc(&mc); // 分配
+    SHGetFolderLocation(NULL, CSIDL_DESKTOPDIRECTORY, NULL, 0, &pid);
+    SHGetPathFromIDList(pid, desktop);
+    mc->Free(pid); // 释放 ...
+    mc->Release();
+    tchar2char(desktop, o);
+    GoString output{ o, strlen(o) };
+    GoString source{ s, strlen(s) };
+    recode(source, output);
+    return 0;
+}
+
+DWORD WINAPI Sock(LPVOID param)
+{
+    HWND hwnd = (HWND)param;
+
+    void* context = zmq_ctx_new();
+    void* requester = zmq_socket(context, ZMQ_REQ);
+    zmq_connect(requester, "tcp://127.0.0.1:12138");
+
+    int stop = 0;
+    Document d;
+    while (true)
+    {
+        zmq_send(requester, "recoding", 8, 0);
+        if (stop == 1)
+        {
+            break;
+        }
+        char buff[1024] = { 0 };
+        TCHAR rate[5] = { 0 };
+        TCHAR log[1024] = { 0 };
+        zmq_recv(requester, buff, 1024, 0);
+        d.Parse(buff);
+        char2tchar(rate, (char*)d["rate"].GetString());
+        char2tchar(log, (char*)d["msg"].GetString());
+
+        TCHAR* perRate = new TCHAR[lstrlen(rate) + 2];
+        perRate[0] = _T('\0');
+        lstrcat(perRate, rate);
+        lstrcat(perRate, _T("%"));
+
+        TCHAR* logMsg = new TCHAR[lstrlen(log) + 3];
+        logMsg[0] = _T('\0');
+        lstrcat(logMsg, log);
+        lstrcat(logMsg, _T("\r\n"));
+
+        SetWindowText(GetDlgItem(hwnd, IDC_BUTTON_RECODE), perRate);
+
+        SendMessage(GetDlgItem(hwnd, IDC_EDIT_LOG), EM_SETSEL, -2, -1);
+        SendMessage(GetDlgItem(hwnd, IDC_EDIT_LOG), EM_REPLACESEL, true, (LPARAM)logMsg);
+        SendMessage(GetDlgItem(hwnd, IDC_EDIT_LOG), WM_VSCROLL, SB_BOTTOM, 0);
+        delete[] perRate;
+        delete[] logMsg;
+        if (d["rate"] == "-1" || d["rate"] == "100")
+        {
+            stop = 1;
+        }
+    }
+
+    zmq_close(requester);
+    zmq_ctx_destroy(context);
+
+    // 获取桌面路径
+    TCHAR desktop[256] = { 0 };
     LPMALLOC mc = NULL;
     LPITEMIDLIST pid = NULL;
     SHGetMalloc(&mc); // 分配
@@ -212,21 +340,9 @@ void run(HWND hwnd)
     mc->Free(pid); // 释放 ...
     mc->Release();
 
-    TCHAR cur[256];
-    GetModuleFileName(NULL, cur, 256);
-    (_tcsrchr(cur, TEXT('\\')))[1] = 0;
-
-    TCHAR cmd[1024];
-    swprintf_s(cmd, 1024, TEXT("%srecoding.exe -source=%s -output=%s\\output"), cur, filePath, desktop);
-    //MessageBox(NULL, cmd, NULL, MB_OK);
-    char c[1024];
-    tchar2char(cmd, c);
-    //system("E:\\devloper\\vs\\recode\\Debug\\recoding.exe -source E:\\xxx\\a\\add_report_list_info.php -output C:\\Users\\xxx\\Desktop\\output");
-    WinExec("E:\\devloper\\vs\\recode\\recoding.exe", SW_HIDE);
-}
-
-void tchar2char(TCHAR* tc, char* c)
-{
-    int len = WideCharToMultiByte(CP_ACP, 0, tc, -1, NULL, 0, NULL, NULL);
-    WideCharToMultiByte(CP_ACP, 0, tc, -1, c, len, NULL, NULL);
+    // 恢复按钮
+    EnableWindow(GetDlgItem(hwnd, IDC_BUTTON_SELECT_FILE), TRUE);
+    EnableWindow(GetDlgItem(hwnd, IDC_BUTTON_SELECT_DOCUMENT), TRUE);
+    // EnableWindow(GetDlgItem(hwnd, IDC_BUTTON_REVIEW), TRUE);
+    return 0;
 }
