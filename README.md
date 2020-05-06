@@ -1,6 +1,6 @@
 # 乱码转换器
 
-（Windows x64）下载地址：https://github.com/hcolde/recoding/releases/download/1/recode.zip
+（Windows x64）下载地址：[https://github.com/hcolde/Recode/releases/download/1/Recode.zip](https://github.com/hcolde/Recode/releases/download/1/Recode.zip)
 
 解决中文乱码问题项目，就不用蹩脚的英文来介绍了。（目前仅支持64位操作系统）
 
@@ -23,7 +23,17 @@
 
 ## 如何使用
 
-1. 确保recode.exe与recoding.dll在同一个目录下；
-2. 端口12138未被占用；
+1. 解压Recode.zip后打开Recode.exe；
+2. 确保端口12138未被占用，程序使用12138端口进行通信，若该端口被占用可能导致界面不显示日志及进度信息；
 3. 目前未作多开限制，请不要多开软件并操作转换；
 4. 转换后的文件保存在桌面的output目录下。
+
+## 下个版本
+
+目前这个版本已经可以简单使用，如果有时间的话，下个版本将支持：
+
+1.禁止多开；
+
+2.自定义输出路径；
+
+3.支持将文件或文件夹拖动到工作区。
